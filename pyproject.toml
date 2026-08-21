@@ -1,0 +1,20 @@
+[project]
+name = "lexicore"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "ismail-ashraf", email = "iismmail23@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "uvicorn>=0.52.4",
+]
+
+[project.scripts]
+lexicore = "lexicore:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
