@@ -1091,6 +1091,8 @@ dependencies = [
     { name = "pymupdf" },
     { name = "pytesseract" },
     { name = "pytest" },
+    { name = "regex" },
+    { name = "torch" },
     { name = "unstructured", extra = ["pdf"] },
     { name = "uvicorn" },
 ]
@@ -1102,6 +1104,8 @@ requires-dist = [
     { name = "pymupdf", specifier = ">=1.28.2" },
     { name = "pytesseract", specifier = ">=0.3.13" },
     { name = "pytest", specifier = ">=9.1.1" },
+    { name = "regex", specifier = ">=2026.7.19" },
+    { name = "torch", specifier = ">=2.13.0" },
     { name = "unstructured", extras = ["pdf"], specifier = ">=0.27.1" },
     { name = "uvicorn", specifier = ">=0.52.4" },
 ]

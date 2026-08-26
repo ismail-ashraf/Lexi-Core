@@ -13,6 +13,8 @@ dependencies = [
     "pymupdf>=1.28.2",
     "pytesseract>=0.3.13",
     "pytest>=9.1.1",
+    "regex>=2026.7.19",
+    "torch>=2.13.0",
     "unstructured[pdf]>=0.27.1",
     "uvicorn>=0.52.4",
 ]
@@ -23,3 +25,6 @@ lexicore = "lexicore:main"
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
