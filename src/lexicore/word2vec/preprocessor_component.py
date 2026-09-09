@@ -1,8 +1,6 @@
 from lexicore.tokenization.bpe_tokenizer import BPETokenizer, BPEVocabulary
 from lexicore.word2vec.context import ContextTargetGenerator
-from lexicore.word2vec.corpus_data_loader import load_corpus
-from pathlib import Path
-
+from lexicore.training.data_preparation import prepare_data
 
 class Word2VecPreprocessor:
     def __init__(self, tokenizer, context_generator):
@@ -36,12 +34,7 @@ class Word2VecPreprocessor:
 
         return all_pairs
 
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-DATA_PATH = PROJECT_ROOT / "data" / "word2vec_data.txt"
-
-corpus = load_corpus(DATA_PATH)
+X_train, X_val, X_test, y_train, y_val, y_test = prepare_data()
 
 tokenizer = BPETokenizer(
     vocab_size=1000
@@ -56,6 +49,6 @@ preprocessor = Word2VecPreprocessor(
     context
 )
 
-pairs = preprocessor.prepare(corpus)
+pairs = preprocessor.prepare(X_train.tolist())
 
 vocab = preprocessor.vocabulary

@@ -1,7 +1,9 @@
 import torch
+import torch.nn as nn
 
-class PositionalEncoding:
+class PositionalEncoding(nn.Module):
     def __init__(self,max_seq_len,dim_model):
+        super().__init__()
 
         position = torch.arange(max_seq_len)
 
@@ -17,6 +19,11 @@ class PositionalEncoding:
 
         self.pe = pe
 
+    def forward(self,x):
+        x = x + self.pe
 
-positional = PositionalEncoding(dim_model=8,max_seq_len=4)
-print(positional.pe)
+        return x
+
+
+# positional = PositionalEncoding(dim_model=8,max_seq_len=4)
+# print(positional.pe)

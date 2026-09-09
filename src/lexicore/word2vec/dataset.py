@@ -1,5 +1,4 @@
 from torch.utils.data import DataLoader,Dataset
-from lexicore.word2vec.preprocessor_component import pairs
 
 class SkipGramDataset(Dataset):
     def __init__(self , pairs):
@@ -15,7 +14,14 @@ class SkipGramDataset(Dataset):
         return target,context
 
 
+def create_dataloader(pairs, batch_size=32):
 
-dataset = SkipGramDataset(pairs)
+    dataset = SkipGramDataset(pairs)
 
-dataloader = DataLoader(batch_size=32 , dataset=dataset,shuffle=True)
+    dataloader = DataLoader(
+        dataset=dataset,
+        batch_size=batch_size,
+        shuffle=True
+    )
+
+    return dataloader

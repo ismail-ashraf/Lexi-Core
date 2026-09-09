@@ -17,6 +17,7 @@ class EncoderBlock(nn.Module):
 
     def forward(self,x):
         attention_out = self.attention(x)
+        print("MHA Output Shape:",attention_out.shape)
         x = x + attention_out
         norm1 = self.norm1(x)
         ffn = self.ffn(norm1)
@@ -27,7 +28,7 @@ class EncoderBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __int__(self,num_layers , dim_model,num_heads):
+    def __init__(self,num_layers , dim_model,num_heads):
         super().__init__()
 
         self.layers = nn.ModuleList([

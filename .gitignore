@@ -220,3 +220,6 @@ __marimo__/
 .idea/
 
 /src/lexicore/data/
+
+mlflow.db
+*.db

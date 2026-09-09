@@ -2,10 +2,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from lexicore.word2vec.skipgram import SkipGramNN
-from lexicore.word2vec.dataset import dataloader
 from lexicore.word2vec.negative_sampling import NegativeSampling
-from lexicore.word2vec.preprocessor_component import vocab , tokenizer
 from lexicore.word2vec.similarity import EmbeddingSimilarity
+from lexicore.training.data_preparation import prepare_data
+from lexicore.word2vec.dataset import create_dataloader
+from lexicore.word2vec.preprocessor_component import Word2VecPreprocessor
+from lexicore.word2vec.context import ContextTargetGenerator
+from lexicore.tokenization.bpe_tokenizer import BPETokenizer
+
 
 
 class SkipGramTrain:
@@ -109,12 +113,40 @@ class SkipGramTrain:
                 f"| Accuracy: {accuracy:.4f}"
             )
 
+
+X_train, X_val, X_test, y_train, y_val, y_test = prepare_data()
+
+tokenizer = BPETokenizer(vocab_size=1000)
+
+context = ContextTargetGenerator(context_window=2)
+
+preprocessor = Word2VecPreprocessor(
+    tokenizer,
+    context
+)
+
+pairs = preprocessor.prepare(X_train.tolist())
+
+vocab = preprocessor.vocabulary
+
+dataloader = create_dataloader(
+    pairs,
+    batch_size=32
+)
+
 torch.manual_seed(42)
-model = SkipGramNN(vocab_size=len(vocab.word2idx) , embedding_dim=16)
-negative_sampler = NegativeSampling(word_freq=vocab.word_freq,word2idx=vocab.word2idx,negative_sampler=2)
+model = SkipGramNN(
+    vocab_size=len(vocab.word2idx),
+    embedding_dim=16
+)
+
+negative_sampler = NegativeSampling(
+    word_freq=vocab.word_freq,
+    word2idx=vocab.word2idx,
+    negative_sampler=2
+)
 optimizer = optim.AdamW(model.parameters() , lr=0.003)
 criterion = nn.BCEWithLogitsLoss()
-
 
 train = SkipGramTrain(
     model=model,
@@ -125,27 +157,27 @@ train = SkipGramTrain(
     criterion=criterion
 )
 
-# train.train()
+train.train()
 
-embeddings = model.input_embeddings.weight.detach()
-print(embeddings.shape)
-
-similarity = EmbeddingSimilarity(
-    model,
-    vocab
-)
-
-# results = similarity.most_similar('employees</w>',top_k=5)
-# for word,score in results:
-#     print(f"{word} | {score:.2f}")
+# embeddings = model.input_embeddings.weight.detach()
+# print(embeddings.shape)
 #
-# # print(vocab.word2idx)
-#
-# print(
-#     similarity.most_similar(
-#         "employees",
-#         top_k=10
-#     )
+# similarity = EmbeddingSimilarity(
+#     model,
+#     vocab
 # )
-# print(vocab.word2idx)
-print(tokenizer.tokenize("employees"))
+#
+# # results = similarity.most_similar('employees</w>',top_k=5)
+# # for word,score in results:
+# #     print(f"{word} | {score:.2f}")
+# #
+# # # print(vocab.word2idx)
+# #
+# # print(
+# #     similarity.most_similar(
+# #         "employees",
+# #         top_k=10
+# #     )
+# # )
+# # print(vocab.word2idx)
+# print(tokenizer.tokenize("employees"))

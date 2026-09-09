@@ -9,11 +9,15 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141.1",
+    "mlflow>=3.16.0",
+    "pandas>=3.0.5",
     "pillow>=12.3.0",
     "pymupdf>=1.28.2",
     "pytesseract>=0.3.13",
     "pytest>=9.1.1",
+    "pyyaml>=6.0.3",
     "regex>=2026.7.19",
+    "scikit-learn>=1.9.0",
     "torch>=2.13.0",
     "unstructured[pdf]>=0.27.1",
     "uvicorn>=0.52.4",
