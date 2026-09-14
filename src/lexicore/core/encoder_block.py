@@ -15,8 +15,8 @@ class EncoderBlock(nn.Module):
         )
         self.norm2 = nn.LayerNorm(dim_model)
 
-    def forward(self,x):
-        attention_out = self.attention(x)
+    def forward(self,x,padding_mask):
+        attention_out = self.attention(x,padding_mask)
         print("MHA Output Shape:",attention_out.shape)
         x = x + attention_out
         norm1 = self.norm1(x)
@@ -28,17 +28,19 @@ class EncoderBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self,num_layers , dim_model,num_heads):
+    def __init__(self,num_layers , dim_model,num_heads,pad_id):
         super().__init__()
 
         self.layers = nn.ModuleList([
             EncoderBlock(dim_model,num_heads)
             for _ in range(num_layers)
         ])
+        self.pad_id = pad_id
 
     def forward(self,x):
+        padding_mask = (x == self.pad_id)
         for layer in self.layers:
-            x = layer(x)
+            x = layer(x,padding_mask)
             """
             for example:: -> X -> block 1 -> X1 -> block 2 -> X2 -> block 3 -> X3
             """

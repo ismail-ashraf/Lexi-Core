@@ -18,7 +18,7 @@ class MultiHeadAttention(nn.Module):
 
         self.out = nn.Linear(dim_model,dim_model)
 
-    def forward(self,x):
+    def forward(self,x,padding_mask):
         b,s,d = x.shape
         # shape = [batch,token,dim_model]
         q = self.query(x)
@@ -43,6 +43,10 @@ class MultiHeadAttention(nn.Module):
             torch.tensor(self.head_dim , dtype=torch.float32)
         )
 
+        attention_score = attention_score.masked_fill(
+            padding_mask.unsqueeze(1).unsqueeze(2),
+            float("-inf")
+        )
         weights_attention = f.softmax(attention_score,dim=-1)
 
         w_v = torch.matmul(weights_attention,v)

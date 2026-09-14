@@ -137,7 +137,7 @@ dataloader = create_dataloader(
 torch.manual_seed(42)
 model = SkipGramNN(
     vocab_size=len(vocab.word2idx),
-    embedding_dim=16
+    embedding_dim=128
 )
 
 negative_sampler = NegativeSampling(
@@ -156,8 +156,9 @@ train = SkipGramTrain(
     num_epochs=10,
     criterion=criterion
 )
+#
+# train.train()
 
-train.train()
 
 # embeddings = model.input_embeddings.weight.detach()
 # print(embeddings.shape)

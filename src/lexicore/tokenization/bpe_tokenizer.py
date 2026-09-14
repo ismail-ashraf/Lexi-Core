@@ -160,3 +160,14 @@ class BPEVocabulary:
             self.idx2word[idx]
             for idx in ids
         ]
+
+    def add_special_token(self, token: str):
+        if token not in self.word2idx:
+            idx = len(self.word2idx)
+
+            self.word2idx[token] = idx
+            self.idx2word[idx] = token
+
+        return self.word2idx[token]
+
+
