@@ -18,6 +18,10 @@ print(f"Saved Loss {checkpoint['loss']:.2f}")
 
 print(f"Saved Accuracy {checkpoint['accuracy']:.2f}")
 
+if isinstance(checkpoint,dict):
+    for key in checkpoint.keys():
+        print(key)
+
 
 state_dict = checkpoint['model_state_dict'] # -> state for all parameters in the model
 

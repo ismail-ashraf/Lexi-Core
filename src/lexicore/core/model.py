@@ -1,60 +1,43 @@
+import torch
+import torch.nn as nn
 from lexicore.core.positional_encoding import PositionalEncoding
 from lexicore.core.encoder_block import Encoder
-import torch.nn as nn
-import torch
+
 
 class TransformerEncoderModel(nn.Module):
-    def __init__(self,max_seq_len,dim_model,num_heads,num_layers,vocab_size,pad_id):
+    def __init__(self, max_seq_len, dim_model, num_heads, num_layers, vocab_size, pad_id):
         super().__init__()
 
-        self.positional_encoder = PositionalEncoding(max_seq_len=max_seq_len , dim_model=dim_model)
-        self.encoder_blocks = Encoder(num_layers , dim_model,num_heads,pad_id)
-        self.classifier = nn.Linear(dim_model,3)
+        self.max_seq_len = max_seq_len
+        self.pad_id = pad_id
 
         self.embedding = nn.Embedding(
             vocab_size,
             dim_model
         )
-        self.pad_id = pad_id
+        self.positional_encoder = PositionalEncoding(max_seq_len=max_seq_len, dim_model=dim_model)
+        self.encoder_blocks = Encoder(num_layers, dim_model, num_heads, pad_id)
+        self.classifier = nn.Linear(dim_model, 3)
 
-    def forward(self,x):
+    def forward(self, x):
+        if x.size(1) > self.max_seq_len:
+            x = x[:, :self.max_seq_len]
+
         padding_mask = (x == self.pad_id)
 
-        embedding = self.embedding(x)
-
+        embedding = self.embedding(x.long())
         positional_encoder = self.positional_encoder(embedding)
 
-        encoder_block = self.encoder_blocks(positional_encoder,padding_mask)
+        encoder_block = self.encoder_blocks(positional_encoder, padding_mask)
 
-        mask = (~padding_mask).unsqueeze(-1) #type:ignore
-
+        mask = (~padding_mask).unsqueeze(-1)  # shape: [batch, seq_len, 1]
         masked_encoder = encoder_block * mask
 
         sum_embeddings = masked_encoder.sum(dim=1)
+        token_count = mask.sum(dim=1).clamp(min=1e-9)
 
-        token_count = mask.sum(dim=1)
+        mean = sum_embeddings / token_count  # shape: [batch, dim_model]
 
-        mean = sum_embeddings / token_count
-        # shape -> [batch,dim_model]
-
-        classifier = self.classifier(mean)
-
-        print("classifier logits",classifier)
-        # shape -> [batch,3 classifier output]
+        classifier = self.classifier(mean)  # shape: [batch, 3]
 
         return classifier
-
-model = TransformerEncoderModel(
-    max_seq_len=10,
-    dim_model=128,
-    num_heads=8,
-    num_layers=3,
-    vocab_size=1000,
-    pad_id=1
-)
-
-x = torch.randn(1,10,128)
-
-out = model(x)
-
-print(out.shape)
