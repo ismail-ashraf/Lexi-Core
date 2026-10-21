@@ -1,6 +1,7 @@
 import torch
+from lexicore.configrations.config import settings
 
-checkpoint_path = r"C:\Users\abdel\Downloads\best_transformer.pth"
+checkpoint_path = settings.TRANSFORMER_MODEL_PATH
 
 data = torch.load(
     checkpoint_path,

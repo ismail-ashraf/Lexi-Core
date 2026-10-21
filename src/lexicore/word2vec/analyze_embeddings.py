@@ -1,6 +1,7 @@
 import torch
+from lexicore.configrations.config import settings
 
-checkpoint_path = r"C:\Users\abdel\Downloads\word2vec_checkpoint.pth"
+checkpoint_path = settings.WORD2VEC_MODEL_PATH
 
 checkpoint = torch.load(
     checkpoint_path,
