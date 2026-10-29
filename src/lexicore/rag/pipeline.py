@@ -155,11 +155,7 @@ class RAGPipeline:
                 else None
             )
 
-            context_parts.append(
-                f"[Chunk ID: {chunk_id}]\n"
-                f"[Document ID: {metadata.get('document_id')}]\n"
-                f"{document}"
-            )
+            context_parts.append(document)
 
             sources.append(
                 {
@@ -183,6 +179,67 @@ class RAGPipeline:
             "answer": answer,
             "sources": sources,
         }
+
+    def index_document(self, document_id: int, batch_size: int = 32) -> dict[str, int]:
+        if document_id <= 0:
+            raise ValueError("document_id must be positive")
+
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+
+        report = {"chunks_indexed": 0}
+
+        with session_maker() as db:
+            last_id = 0
+
+            while True:
+                chunks = db.scalars(
+                    select(Chunk)
+                    .where(
+                        Chunk.document_id == document_id,
+                        Chunk.id > last_id,
+                    )
+                    .order_by(Chunk.id)
+                    .limit(batch_size)
+                ).all()
+
+                if not chunks:
+                    break
+
+                texts = [chunk.content for chunk in chunks]
+                embeddings = self.embedder.embed_texts(texts)
+
+                ids = [str(chunk.id) for chunk in chunks]
+                metadatas = [
+                    {
+                        "document_id": chunk.document_id,
+                        "chunk_index": chunk.chunk_index,
+                    }
+                    for chunk in chunks
+                ]
+
+                self.vector_store.add_chunks(
+                    ids=ids,
+                    texts=texts,
+                    embeddings=embeddings,
+                    metadatas=metadatas,
+                )
+
+                report["chunks_indexed"] += len(chunks)
+                last_id = chunks[-1].id
+
+        if report["chunks_indexed"] == 0:
+            raise ValueError(
+                f"No chunks found for document ID {document_id}"
+            )
+
+        logger.info(
+            "Indexed document ID %s: %s chunks",
+            document_id,
+            report["chunks_indexed"],
+        )
+
+        return report
 
 
 def main():
