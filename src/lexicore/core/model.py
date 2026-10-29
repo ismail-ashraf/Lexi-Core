@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 from lexicore.core.positional_encoding import PositionalEncoding
 from lexicore.core.encoder_block import Encoder

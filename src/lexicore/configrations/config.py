@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     ]
     ner_threshold: float = 0.5
 
+    DATABASE_URL : str
 
     model_config = SettingsConfigDict(
         env_file=env_file,

@@ -223,3 +223,20 @@ __marimo__/
 
 mlflow.db
 *.db
+
+.env.*
+!.env.example
+
+
+# Model checkpoints
+*.pth
+*.pt
+*.onnx
+*.safetensors
+
+# Python environment and cache
+.venv/
+.cache/
+
+# Local vector database
+data/chroma/
