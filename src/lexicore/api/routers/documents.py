@@ -1,11 +1,8 @@
-
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
-
 import hashlib
 from pathlib import Path
 from uuid import uuid4
-
 from lexicore.background.tasks import process_and_index_document
 from lexicore.rag.database.connection import get_db
 from lexicore.rag.database.models import Document
@@ -20,8 +17,8 @@ router = APIRouter(
 )
 
 
-@router.post("/{document_id}/process", status_code=status.HTTP_202_ACCEPTED)
-def enqueue_document_processing(
+@router.get("/{document_id}")
+def get_document_status(
     document_id: int,
     db: Session = Depends(get_db),
 ) -> dict:
@@ -33,28 +30,12 @@ def enqueue_document_processing(
             detail="Document not found",
         )
 
-    if document.status != "pending":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Document cannot be processed. "
-                f"Current status: {document.status}"
-            ),
-        )
-
-    try:
-        task = process_and_index_document(document_id)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Failed to queue document processing",
-        ) from exc
-
     return {
-        "message": "Document processing and indexing queued successfully",
-        "document_id": document_id,
-        "task_id": task.id,
-        "status": "queued",
+        "document_id": document.id,
+        "filename": document.filename,
+        "status": document.status,
+        "attempt_count": document.attempt_count,
+        "last_error": document.last_error,
     }
 
 
