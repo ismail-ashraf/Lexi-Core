@@ -1,47 +1,35 @@
+
 import logging
-from pathlib import Path
-from sqlalchemy import select, update
+
+from sqlalchemy import delete, select, update
+
+from lexicore.parsing.document_parser import DocumentParser
 from lexicore.rag.database.connection import session_maker
-from lexicore.rag.database.models import Document, Chunk
+from lexicore.rag.database.models import (
+    Document,
+    Chunk,
+    ClassificationResult,
+    DocumentEntity,
+)
 from lexicore.rag.chunking.chunker import DocumentChunker
-from pypdf import PdfReader
+from lexicore.services.document_classifier import DocumentClassifier
+from lexicore.services.entity_extractor import NERService
 
 logger = logging.getLogger(__name__)
 
+
 class DocumentProcessor:
-    def __init__(self, chunker: DocumentChunker | None = None):
+    def __init__(
+        self,
+        chunker: DocumentChunker | None = None,
+        classifier: DocumentClassifier | None = None,
+        ner_service: NERService | None = None,
+        parser: DocumentParser | None = None,
+    ):
         self.chunker = chunker or DocumentChunker()
-
-    @staticmethod
-    def read_document(storage_path: str):
-        path = Path(storage_path)
-        suffix = path.suffix.lower()
-
-        if suffix == ".txt":
-            try:
-                return path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                return path.read_text(encoding="cp1252")
-
-        if suffix == ".pdf":
-            reader = PdfReader(str(path))
-
-            if reader.is_encrypted:
-                raise ValueError("Encrypted PDF files are not supported")
-
-            text = "\n".join(
-                page.extract_text() or ""
-                for page in reader.pages
-            )
-
-            if not text.strip():
-                raise ValueError(
-                    "No extractable text found in PDF. OCR may be required."
-                )
-
-            return text
-
-        raise ValueError(f"Unsupported document format: {suffix}")
+        self.classifier = classifier or DocumentClassifier()
+        self.ner_service = ner_service or NERService()
+        self.parser = parser or DocumentParser()
 
     def process_document(self, document_id: int) -> dict[str, int]:
         report = {
@@ -51,8 +39,7 @@ class DocumentProcessor:
             "skipped": 0,
         }
 
-        # Claim the document so another worker cannot process
-        # the same pending document at the same time.
+        # 1. Atomically claim the pending document.
         with session_maker() as db:
             result = db.execute(
                 update(Document)
@@ -77,20 +64,73 @@ class DocumentProcessor:
             storage_path = document.storage_path
 
         try:
-            text = self.read_document(storage_path)
+            # 2. Parse the document into text.
+            text = self.parser.parse(storage_path)
+
+            if not text.strip():
+                raise ValueError("Document contains no text")
+
+            # 3. Run document classification and NER.
+            classification = self.classifier.predict(text)
+            entities = self.ner_service.predict(text)
+
+            # 4. Split the extracted text into chunks.
             chunks = self.chunker.split_document(text)
 
             if not chunks:
                 raise ValueError("Document produced no chunks")
 
-            # Save chunks and mark the document processed
-            # in the same database transaction.
+            # 5. Persist classification, entities, and chunks.
             with session_maker() as db:
                 document = db.get(Document, document_id)
 
                 if document is None:
                     raise ValueError(
                         f"Document {document_id} no longer exists"
+                    )
+
+                existing_classification = db.scalar(
+                    select(ClassificationResult).where(
+                        ClassificationResult.document_id == document_id
+                    )
+                )
+
+                if existing_classification is None:
+                    db.add(
+                        ClassificationResult(
+                            document_id=document_id,
+                            label=classification["label"],
+                            confidence=classification["confidence"],
+                        )
+                    )
+                else:
+                    existing_classification.label = classification["label"]
+                    existing_classification.confidence = (
+                        classification["confidence"]
+                    )
+
+                # Replace previous analysis results.
+                db.execute(
+                    delete(DocumentEntity).where(
+                        DocumentEntity.document_id == document_id
+                    )
+                )
+                db.execute(
+                    delete(Chunk).where(
+                        Chunk.document_id == document_id
+                    )
+                )
+
+                for entity in entities:
+                    db.add(
+                        DocumentEntity(
+                            document_id=document_id,
+                            text=entity["text"],
+                            label=entity["label"],
+                            score=entity["score"],
+                            start=entity.get("start"),
+                            end=entity.get("end"),
+                        )
                     )
 
                 for chunk_data in chunks:
@@ -102,20 +142,30 @@ class DocumentProcessor:
                         )
                     )
 
-                document.status = "processed"
+                # Celery's next task handles Chroma indexing.
+                document.status = "processing"
                 document.last_error = None
+
                 db.commit()
 
             report["processed"] = 1
             report["chunks_created"] = len(chunks)
 
             logger.info(
-                "Processed document ID %s: %s chunks",
+                "Processed document ID %s: %s chunks, %s entities, "
+                "classification=%s",
                 document_id,
                 len(chunks),
+                len(entities),
+                classification["label"],
             )
 
         except Exception as exc:
+            logger.exception(
+                "Failed to process document ID %s",
+                document_id,
+            )
+
             with session_maker() as db:
                 document = db.get(Document, document_id)
 
@@ -126,11 +176,6 @@ class DocumentProcessor:
                     db.commit()
 
             report["failed"] = 1
-
-            logger.exception(
-                "Failed to process document ID %s",
-                document_id,
-            )
 
         return report
 
@@ -155,4 +200,3 @@ class DocumentProcessor:
                 report[key] += result[key]
 
         return report
-

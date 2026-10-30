@@ -45,6 +45,14 @@ class ChromaVectorStore:
             metadatas=metadatas,
         )
 
+    def delete_document(self, document_id: int) -> None:
+        if document_id <= 0:
+            raise ValueError("document_id must be positive")
+
+        self.collection.delete(
+            where={"document_id": document_id}
+        )
+
     def search(
             self,
             query_embedding: list[float],

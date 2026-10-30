@@ -296,3 +296,80 @@ def reconstruct_table(page, y_tolerance=5):
         table.append(row_data)
 
     return table
+
+def analyze_page(page):
+    if page is None:
+        raise ValueError("Page is Empty")
+
+    data = page.get_text("dict")
+
+    text_blocks = []
+    image_blocks = []
+
+    for block in data["blocks"]:
+        if block["type"] == 0:
+            lines = []
+
+            for line in block["lines"]:
+                spans = []
+
+                for span in line["spans"]:
+                    spans.append({
+                        "text": span["text"],
+                        "font": span["font"],
+                        "size": span["size"],
+                        "bbox": span["bbox"],
+                    })
+
+                lines.append(spans)
+
+            text_blocks.append({
+                "bbox": block["bbox"],
+                "lines": lines,
+            })
+
+
+        elif block["type"] == 1:
+
+            x0, y0, x1, y1 = block["bbox"]
+
+            image_width = x1 - x0
+
+            image_height = y1 - y0
+
+            image_blocks.append({
+
+                "bbox": block["bbox"],
+
+                "width": block["width"],
+
+                "height": block["height"],
+
+                "area_ratio": (
+                image_width * image_height
+                ) / (page.rect.width * page.rect.height),
+            })
+        has_native_text = len(text_blocks) > 0
+        has_images = len(image_blocks) > 0
+
+        if has_native_text and has_images:
+            page_type = "mixed"
+        elif has_native_text:
+            page_type = "native"
+        elif has_images:
+            page_type = "image_based"
+        else:
+            page_type = "empty"
+
+    return {
+        "page_number": page.number + 1,
+        "page_size": {
+            "width": page.rect.width,
+            "height": page.rect.height,
+        },
+        "text_blocks": text_blocks,
+        "image_blocks": image_blocks,
+        "text_blocks_count": len(text_blocks),
+        "image_blocks_count": len(image_blocks),
+        "page_type": page_type,
+    }

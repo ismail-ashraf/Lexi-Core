@@ -1,32 +1,122 @@
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.orm import Mapped,mapped_column
-from sqlalchemy import DateTime, func,Integer,String,Text,ForeignKey,UniqueConstraint
 from datetime import datetime
+from sqlalchemy import (
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     pass
 
+
 class Document(Base):
-    __tablename__ = 'documents'
+    __tablename__ = "documents"
 
-    id : Mapped[int] = mapped_column(Integer , primary_key=True , index=True)
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, index=True
+    )
 
-    filename : Mapped[str] = mapped_column(String(255),nullable=False)
+    filename: Mapped[str] = mapped_column(
+        String(255), nullable=False
+    )
 
-    storage_path : Mapped[str] = mapped_column(Text,nullable=False)
+    storage_path: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )
 
-    content_hash : Mapped[str] = mapped_column(String(64),nullable=False,unique=True)
+    content_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True
+    )
 
-    status : Mapped[str] = mapped_column(String(20),nullable=False , default='pending')
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending"
+    )
 
-    attempt_count : Mapped[int] = mapped_column(Integer , nullable=False , default=0)
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
 
-    last_error : Mapped[str | None] = mapped_column(Text , nullable=True)
+    last_error: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
 
-    created_at : Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True,server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        server_default=func.now(),
+    )
 
 
+class ClassificationResult(Base):
+    __tablename__ = "classification_results"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            name="uq_classification_document",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, index=True
+    )
+
+    document_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    label: Mapped[str] = mapped_column(
+        String(255), nullable=False
+    )
+
+    confidence: Mapped[float] = mapped_column(
+        Float, nullable=False
+    )
+
+
+class DocumentEntity(Base):
+    __tablename__ = "document_entities"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, index=True
+    )
+
+    document_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    text: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )
+
+    label: Mapped[str] = mapped_column(
+        String(255), nullable=False
+    )
+
+    score: Mapped[float] = mapped_column(
+        Float, nullable=False
+    )
+
+    start: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+
+    end: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
 
 
 class Chunk(Base):

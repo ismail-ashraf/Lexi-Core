@@ -240,3 +240,12 @@ mlflow.db
 
 # Local vector database
 data/chroma/
+
+
+*.py[cod]
+
+# Uploaded documents
+data/uploads/
+
+# Tests
+tests/

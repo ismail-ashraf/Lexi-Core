@@ -5,13 +5,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 env_file = BASE_DIR / '.env'
 
 class Settings(BaseSettings):
-    TRANSFORMER_MODEL_PATH : str
-    WORD2VEC_MODEL_PATH : str
-    BERT_MODEL_PATH : str
-    NER_MODEL_PATH : str
     NER_ONNX_MODEL_PATH : str
     BERT_ONNX_MODEL_PATH : str
-    DEVICE : str
     MAX_LENGTH : int
     legal_ner_labels: list[str] = [
         "Act", "Address", "Court", "EffectiveDate", "PII_Ref",
