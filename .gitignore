@@ -249,3 +249,24 @@ data/uploads/
 
 # Tests
 tests/
+
+data/
+chroma_backup/
+
+# Database backups
+database_backup/
+*.sql
+*.sqlite3
+
+# Frontend dependencies
+node_modules/
+
+# Local database backups
+*.dump
+
+
+# Local Chroma databases and backups
+data/chroma_old_before_reset/
+
+# Temporary diagnostic scripts
+src/lexicore/check_chroma.py

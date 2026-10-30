@@ -54,36 +54,64 @@ class ChromaVectorStore:
         )
 
     def search(
-            self,
-            query_embedding: list[float],
-            n_results: int = 5,
-            document_id: int | None = None,
-    ):
+        self,
+        query_embedding: list[float],
+        n_results: int = 5,
+        document_id: int | None = None,
+        allowed_document_ids: list[int] | None = None,
+    ) -> dict:
         if not query_embedding:
             raise ValueError("Query embedding cannot be empty")
 
         if n_results <= 0:
             raise ValueError("n_results must be positive")
 
+        empty_result = {
+            "ids": [[]],
+            "documents": [[]],
+            "metadatas": [[]],
+            "distances": [[]],
+        }
+
+        # No ready documents means no searchable documents.
+        if not allowed_document_ids:
+            return empty_result
+
+        # Restrict search to ready documents only.
+        filters = [
+            {
+                "document_id": {
+                    "$in": allowed_document_ids
+                }
+            }
+        ]
+
+        # Optional document-specific search.
+        if document_id is not None:
+            if document_id not in allowed_document_ids:
+                return empty_result
+
+            filters.append(
+                {"document_id": document_id}
+            )
+
+        where = (
+            filters[0]
+            if len(filters) == 1
+            else {"$and": filters}
+        )
+
+        # ChromaDB count() does not support where filters.
         total_chunks = self.collection.count()
 
         if total_chunks == 0:
-            return {
-                "ids": [[]],
-                "documents": [[]],
-                "metadatas": [[]],
-                "distances": [[]],
-            }
+            return empty_result
 
-        query_kwargs = {
-            "query_embeddings": [query_embedding],
-            "n_results": min(n_results, total_chunks),
-        }
-
-        if document_id is not None:
-            query_kwargs["where"] = {"document_id": document_id}
-
-        return self.collection.query(**query_kwargs)
+        return self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=min(n_results, total_chunks),
+            where=where,
+        )
 
     def count(self) -> int:
         return self.collection.count()

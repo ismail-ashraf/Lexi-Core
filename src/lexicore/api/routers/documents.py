@@ -1,8 +1,18 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy.orm import Session
+
 import hashlib
 from pathlib import Path
 from uuid import uuid4
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
+from sqlalchemy.orm import Session
+
 from lexicore.background.tasks import process_and_index_document
 from lexicore.rag.database.connection import get_db
 from lexicore.rag.database.models import Document
@@ -11,10 +21,34 @@ from lexicore.rag.database.models import Document
 UPLOAD_DIR = Path("data/uploads")
 ALLOWED_EXTENSIONS = {".txt", ".pdf"}
 
+ACTIVE_STATUSES = {"pending", "processing", "indexing"}
+
 router = APIRouter(
     prefix="/documents",
     tags=["Documents"],
 )
+
+
+@router.get("/")
+def get_documents(
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    documents = (
+        db.query(Document)
+        .order_by(Document.id.desc())
+        .all()
+    )
+
+    return [
+        {
+            "document_id": document.id,
+            "filename": document.filename,
+            "status": document.status,
+            "attempt_count": document.attempt_count,
+            "last_error": document.last_error,
+        }
+        for document in documents
+    ]
 
 
 @router.get("/{document_id}")
@@ -97,8 +131,6 @@ async def upload_document(
     try:
         task = process_and_index_document(document.id)
     except Exception as exc:
-        # The document is already saved.
-        # Keep it and allow processing to be retried.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
@@ -113,4 +145,70 @@ async def upload_document(
         "document_id": document.id,
         "task_id": task.id,
         "status": "queued",
+    }
+
+
+@router.delete("/{document_id}")
+def delete_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+) -> dict:
+    document = db.get(Document, document_id)
+
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    if document.status in ACTIVE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Cannot delete a document while its status is "
+                f"'{document.status}'. Wait until processing finishes."
+            ),
+        )
+
+    storage_path = Path(document.storage_path)
+
+    # Import lazily to avoid router import cycles.
+    from lexicore.api.routers.rag import get_pipeline
+
+    try:
+        pipeline = get_pipeline()
+        pipeline.vector_store.delete_document(document_id)
+    except Exception:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to remove document vectors from ChromaDB",
+        ) from None
+
+    try:
+        db.delete(document)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Vectors were removed, but the database deletion failed. "
+                "The document record may still exist."
+            ),
+        ) from None
+
+    file_deleted = True
+
+    try:
+        storage_path.unlink(missing_ok=True)
+    except OSError:
+        file_deleted = False
+
+    return {
+        "message": "Document deleted from the database and vector store",
+        "document_id": document_id,
+        "file_deleted": file_deleted,
     }

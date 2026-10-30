@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     ner_threshold: float = 0.5
 
     DATABASE_URL : str
+    CUAD_DATASET_DIR: Path
 
     model_config = SettingsConfigDict(
         env_file=env_file,

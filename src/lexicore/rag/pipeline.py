@@ -1,7 +1,7 @@
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from lexicore.rag.database.connection import session_maker
 from lexicore.rag.database.models import Chunk, Document
@@ -24,45 +24,41 @@ class RAGPipeline:
         self.llm = llm or LLMService()
 
     def index_chunks(self, batch_size: int = 32) -> dict[str, int]:
+        """
+        Index documents waiting for the indexing stage.
+        Only documents with processing status are eligible.
+        """
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
 
         report = {"chunks_indexed": 0}
 
         with session_maker() as db:
-            last_id = 0
+            document_ids = db.scalars(
+                select(Document.id)
+                .where(Document.status == "processing")
+                .order_by(Document.id)
+            ).all()
 
-            while True:
-                chunks = db.scalars(
-                    select(Chunk)
-                    .where(Chunk.id > last_id)
-                    .order_by(Chunk.id)
-                    .limit(batch_size)
-                ).all()
+        for document_id in document_ids:
+            try:
+                result = self.index_document(
+                    document_id=document_id,
+                    batch_size=batch_size,
+                )
+                report["chunks_indexed"] += result["chunks_indexed"]
 
-                if not chunks:
-                    break
-
-                texts = [chunk.content for chunk in chunks]
-                embeddings = self.embedder.embed_texts(texts)
-
-                self.vector_store.add_chunks(
-                    ids=[str(chunk.id) for chunk in chunks],
-                    texts=texts,
-                    embeddings=embeddings,
-                    metadatas=[
-                        {
-                            "document_id": chunk.document_id,
-                            "chunk_index": chunk.chunk_index,
-                        }
-                        for chunk in chunks
-                    ],
+            except Exception:
+                logger.exception(
+                    "Failed to index document %s during bulk indexing",
+                    document_id,
                 )
 
-                report["chunks_indexed"] += len(chunks)
-                last_id = chunks[-1].id
+        logger.info(
+            "Indexed %s chunks",
+            report["chunks_indexed"],
+        )
 
-        logger.info("Indexed %s chunks", report["chunks_indexed"])
         return report
 
     def index_document(
@@ -76,27 +72,36 @@ class RAGPipeline:
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
 
-        # Claim the indexing stage.
+        # Atomically claim the indexing stage.
         with session_maker() as db:
-            document = db.get(Document, document_id)
-
-            if document is None:
-                raise ValueError(
-                    f"Document {document_id} does not exist"
+            result = db.execute(
+                update(Document)
+                .where(
+                    Document.id == document_id,
+                    Document.status == "processing",
                 )
+                .values(
+                    status="indexing",
+                    last_error=None,
+                )
+            )
+            db.commit()
 
-            if document.status != "processing":
+            if result.rowcount != 1:
+                document = db.get(Document, document_id)
+
+                if document is None:
+                    raise ValueError(
+                        f"Document {document_id} does not exist"
+                    )
+
                 raise ValueError(
                     f"Document {document_id} cannot be indexed "
                     f"from status '{document.status}'"
                 )
 
-            document.status = "indexing"
-            document.last_error = None
-            db.commit()
-
         try:
-            # Load the document's chunks.
+            # Load all chunk IDs belonging to this document.
             with session_maker() as db:
                 chunk_ids = db.scalars(
                     select(Chunk.id)
@@ -128,26 +133,34 @@ class RAGPipeline:
                         .order_by(Chunk.id)
                     ).all()
 
-                    if not chunks:
-                        continue
-
-                    texts = [chunk.content for chunk in chunks]
-                    embeddings = self.embedder.embed_texts(texts)
-
-                    self.vector_store.add_chunks(
-                        ids=[str(chunk.id) for chunk in chunks],
-                        texts=texts,
-                        embeddings=embeddings,
-                        metadatas=[
-                            {
-                                "document_id": chunk.document_id,
-                                "chunk_index": chunk.chunk_index,
-                            }
-                            for chunk in chunks
-                        ],
+                if len(chunks) != len(batch_ids):
+                    raise RuntimeError(
+                        f"Expected {len(batch_ids)} chunks, "
+                        f"but loaded {len(chunks)}"
                     )
 
-                    report["chunks_indexed"] += len(chunks)
+                texts = [chunk.content for chunk in chunks]
+                embeddings = self.embedder.embed_texts(texts)
+
+                if len(embeddings) != len(chunks):
+                    raise RuntimeError(
+                        "Embedding count does not match chunk count"
+                    )
+
+                self.vector_store.add_chunks(
+                    ids=[str(chunk.id) for chunk in chunks],
+                    texts=texts,
+                    embeddings=embeddings,
+                    metadatas=[
+                        {
+                            "document_id": chunk.document_id,
+                            "chunk_index": chunk.chunk_index,
+                        }
+                        for chunk in chunks
+                    ],
+                )
+
+                report["chunks_indexed"] += len(chunks)
 
             if report["chunks_indexed"] != len(chunk_ids):
                 raise RuntimeError(
@@ -155,18 +168,25 @@ class RAGPipeline:
                     f"but indexed {report['chunks_indexed']}"
                 )
 
-            # Mark ready only after successful indexing.
+            # Mark ready only after every chunk was indexed.
             with session_maker() as db:
-                document = db.get(Document, document_id)
-
-                if document is None:
-                    raise ValueError(
-                        f"Document {document_id} no longer exists"
+                result = db.execute(
+                    update(Document)
+                    .where(
+                        Document.id == document_id,
+                        Document.status == "indexing",
                     )
-
-                document.status = "ready"
-                document.last_error = None
+                    .values(
+                        status="ready",
+                        last_error=None,
+                    )
+                )
                 db.commit()
+
+                if result.rowcount != 1:
+                    raise RuntimeError(
+                        f"Could not mark document {document_id} as ready"
+                    )
 
             logger.info(
                 "Indexed document %s: %s chunks",
@@ -182,14 +202,46 @@ class RAGPipeline:
                 document_id,
             )
 
-            with session_maker() as db:
-                document = db.get(Document, document_id)
+            # Remove partially indexed vectors.
+            cleanup_succeeded = False
 
-                if document is not None:
-                    document.status = "failed"
-                    document.attempt_count += 1
-                    document.last_error = str(exc)
-                    db.commit()
+            try:
+                self.vector_store.delete_document(document_id)
+                cleanup_succeeded = True
+            except Exception:
+                logger.exception(
+                    "Failed to clean up vectors for document %s",
+                    document_id,
+                )
+
+            error_message = str(exc)
+
+            if not cleanup_succeeded:
+                error_message += (
+                    " | WARNING: Vector cleanup failed; "
+                    "stale vectors may remain in ChromaDB."
+                )
+
+            with session_maker() as db:
+                result = db.execute(
+                    update(Document)
+                    .where(
+                        Document.id == document_id,
+                        Document.status == "indexing",
+                    )
+                    .values(
+                        status="failed",
+                        attempt_count=Document.attempt_count + 1,
+                        last_error=error_message,
+                    )
+                )
+                db.commit()
+
+                if result.rowcount != 1:
+                    logger.error(
+                        "Could not update failure status for document %s",
+                        document_id,
+                    )
 
             raise
 
@@ -209,12 +261,37 @@ class RAGPipeline:
         if candidate_k <= 0:
             raise ValueError("candidate_k must be positive")
 
+        if document_id is not None and document_id <= 0:
+            raise ValueError("document_id must be positive")
+
+        # Get searchable document IDs from SQL.
+        with session_maker() as db:
+            statement = select(Document.id).where(
+                Document.status == "ready"
+            )
+
+            if document_id is not None:
+                statement = statement.where(
+                    Document.id == document_id
+                )
+
+            ready_document_ids = db.scalars(statement).all()
+
+        if not ready_document_ids:
+            return {
+                "ids": [[]],
+                "documents": [[]],
+                "metadatas": [[]],
+                "distances": [[]],
+            }
+
         query_embedding = self.embedder.embed_query(query)
 
         results = self.vector_store.search(
             query_embedding=query_embedding,
             n_results=max(n_results, candidate_k),
             document_id=document_id,
+            allowed_document_ids=ready_document_ids,
         )
 
         # Return only the requested number of results.
@@ -235,11 +312,11 @@ class RAGPipeline:
         return results
 
     def ask(
-            self,
-            query: str,
-            n_results: int = 5,
-            candidate_k: int = 30,
-            document_id: int | None = None,
+        self,
+        query: str,
+        n_results: int = 5,
+        candidate_k: int = 30,
+        document_id: int | None = None,
     ) -> dict:
         results = self.search(
             query=query,
@@ -275,7 +352,7 @@ class RAGPipeline:
                 else {}
             )
 
-            document_id = metadata.get("document_id")
+            source_document_id = metadata.get("document_id")
             chunk_index = metadata.get("chunk_index")
 
             distance = (
@@ -285,7 +362,7 @@ class RAGPipeline:
             )
 
             context_parts.append(
-                f"Document ID: {document_id}\n"
+                f"Document ID: {source_document_id}\n"
                 f"Chunk ID: {chunk_id}\n"
                 f"Content:\n{content}"
             )
@@ -293,7 +370,7 @@ class RAGPipeline:
             sources.append(
                 {
                     "chunk_id": chunk_id,
-                    "document_id": document_id,
+                    "document_id": source_document_id,
                     "chunk_index": chunk_index,
                     "distance": distance,
                     "content": content,

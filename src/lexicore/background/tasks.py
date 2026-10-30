@@ -5,7 +5,18 @@ from lexicore.background.celery_app import celery_app
 from lexicore.rag.chunking.processor import DocumentProcessor
 from lexicore.rag.pipeline import RAGPipeline
 
+
+_processor = None
 _pipeline = None
+
+
+def get_processor() -> DocumentProcessor:
+    global _processor
+
+    if _processor is None:
+        _processor = DocumentProcessor()
+
+    return _processor
 
 
 def get_pipeline() -> RAGPipeline:
@@ -21,7 +32,7 @@ def get_pipeline() -> RAGPipeline:
     name="lexicore.process_document",
 )
 def process_document_task(document_id: int) -> dict:
-    processor = DocumentProcessor()
+    processor = get_processor()
     result = processor.process_document(document_id)
 
     if result["processed"] != 1:
