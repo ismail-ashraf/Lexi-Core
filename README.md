@@ -6,13 +6,13 @@ LexiCore is a full-stack AI-powered document intelligence system designed to tra
 
 It combines document parsing, Natural Language Processing (NLP), Named Entity Recognition (NER), BERT-based language models, semantic search, and Retrieval-Augmented Generation (RAG) to help users extract information, understand document content, and ask context-aware questions.
 
-LexiCore provides both an interactive frontend and a modular Python backend, bringing document processing, AI-powered search, and conversational question answering together in one application.
+LexiCore provides an interactive frontend and a modular Python backend, supported by asynchronous background processing using Celery and Redis.
 
 ## Overview
 
 LexiCore goes beyond traditional document storage and search by providing multiple layers of document understanding.
 
-Users can interact with their documents through the frontend, while the backend handles document processing, AI inference, indexing, retrieval, and answer generation.
+Users interact with their documents through the frontend, while the backend handles document processing, AI inference, indexing, retrieval, and answer generation.
 
 The system includes:
 
@@ -21,6 +21,7 @@ The system includes:
 - **BERT-Based NLP:** Use transformer-based language models for contextual document understanding and classification tasks.
 - **Semantic Search:** Retrieve relevant document content using vector embeddings.
 - **Retrieval-Augmented Generation:** Generate answers grounded in retrieved document content.
+- **Asynchronous Processing:** Execute background jobs using Celery workers and Redis.
 - **Conversation Management:** Organize and maintain question-answering conversations.
 - **Interactive Frontend:** Provide a user-friendly interface for document interaction and AI-powered question answering.
 
@@ -28,36 +29,22 @@ The system includes:
 
 LexiCore includes a frontend interface that allows users to interact with the document intelligence system without directly using API endpoints.
 
-The frontend communicates with the FastAPI backend through REST API requests. The backend handles the actual document processing and AI operations, while the frontend presents the results in an accessible interface.
+The frontend communicates with the FastAPI backend through REST API requests. The backend handles document processing and AI operations, while the frontend presents the results in an accessible interface.
 
 ### Frontend Workflow
 
 The typical user workflow is:
 
-1. **Upload Documents**  
-   Users upload their documents through the frontend interface.
-
-2. **Document Processing**  
-   The frontend sends the uploaded files to the backend. The backend handles parsing, text extraction, and document processing.
-
-3. **AI Processing and Indexing**  
-   The backend performs the required NLP operations and generates embeddings for semantic indexing.
-
-4. **Ask Questions**  
-   Users submit natural-language questions through the chat interface.
-
-5. **Context Retrieval**  
-   The backend retrieves relevant document chunks from ChromaDB using semantic similarity.
-
-6. **Answer Generation**  
-   The retrieved context is passed to the LLM through the RAG pipeline.
-
-7. **Display Results**  
-   The backend returns the generated answer and its associated source information, which the frontend displays to the user.
+1. **Upload Documents:** Users upload documents through the frontend.
+2. **Document Processing:** The frontend sends uploaded files to the FastAPI backend.
+3. **Background Execution:** The backend dispatches processing tasks to Celery through Redis.
+4. **AI Processing and Indexing:** A separate worker executes the required processing, NLP, and indexing operations.
+5. **Ask Questions:** Users submit natural-language questions through the chat interface.
+6. **Context Retrieval:** The backend retrieves relevant document chunks from ChromaDB using semantic similarity.
+7. **Answer Generation:** Retrieved context is passed to the LLM through the RAG pipeline.
+8. **Display Results:** The backend returns generated answers and associated source information, which the frontend displays.
 
 ### Frontend Capabilities
-
-The frontend provides the user-facing layer of LexiCore, including:
 
 - Document upload and interaction.
 - Access to document-related information.
@@ -69,8 +56,6 @@ The frontend provides the user-facing layer of LexiCore, including:
 
 <!-- Add actual application screenshots here -->
 
-The following screenshots can be used to showcase the application:
-
 | Dashboard | Document Management |
 |---|---|
 | ![LexiCore Dashboard](docs/images/dashboard.png) | ![Document Management](docs/images/documents.png) |
@@ -79,14 +64,16 @@ The following screenshots can be used to showcase the application:
 |---|---|
 | ![AI Chat](docs/images/chat.png) | ![Conversations](docs/images/conversations.png) |
 
-> Replace these image paths with actual screenshots from the frontend. Screenshots should show the real application interface.
+Replace these image paths with actual screenshots from the frontend.
 
 ## System Architecture
 
+LexiCore follows a modular architecture that separates API handling, asynchronous task execution, AI processing, and data persistence.
+
 ```mermaid
 flowchart TD
-    U[User] --> FE[LexiCore Frontend]
-    FE <-->|REST API Requests / Responses| API[FastAPI Backend]
+    U[User] <--> FE[LexiCore Frontend]
+    FE <-->|REST API| API[FastAPI Backend]
 
     API --> DOC[Document API]
     API --> RAG[RAG API]
@@ -96,11 +83,17 @@ flowchart TD
     ING --> PARSE[Document Parsing]
     PARSE --> NLP[NLP Processing]
 
-    NLP --> NER[Named Entity Recognition]
+    NLP --> NER[GLiNER NER]
     NLP --> BERT[BERT-Based NLP]
     NLP --> CHUNK[Text Chunking]
 
-    CHUNK --> EMB[Embedding Generation]
+    ING --> CELERY[Celery Task Queue]
+    CELERY <--> REDIS[(Redis Broker)]
+    CELERY --> WORKER[Separate Celery Worker]
+
+    WORKER --> PARSE
+    WORKER --> NLP
+    WORKER --> EMB[Embedding Generation]
     EMB --> VDB[(ChromaDB)]
 
     RAG --> QE[Query Embedding]
@@ -112,10 +105,45 @@ flowchart TD
 
     DOC --> DB[(PostgreSQL)]
     CONV --> DB
-    ING --> DB
+    WORKER --> DB
 
     ANS --> API
     API --> FE
+```
+
+## Asynchronous Background Processing
+
+LexiCore uses **Celery and Redis** to separate long-running background operations from the FastAPI request-handling process.
+
+Instead of executing document processing and indexing directly inside an API request, the backend can dispatch tasks to a Celery worker.
+
+### How It Works
+
+1. **Task Dispatch:** FastAPI submits a background task to Celery.
+2. **Message Brokering:** Redis acts as the message broker and holds queued task messages.
+3. **Task Execution:** A separate Celery worker consumes queued tasks and executes them.
+4. **Database Updates:** The worker updates document processing status and persists relevant results.
+5. **Vector Indexing:** The worker generates embeddings and stores document chunks in ChromaDB.
+6. **Completion:** The document processing workflow updates its final status.
+
+### Why Celery and Redis?
+
+- **Non-blocking API:** Long-running document processing does not need to execute inside the API request lifecycle.
+- **Process Separation:** API serving and background execution run as separate processes.
+- **Task Queuing:** Redis provides a broker for passing tasks between the API and workers.
+- **Scalability:** Additional workers can be started to handle more background workloads independently.
+- **Separation of Responsibilities:** FastAPI handles HTTP requests, while Celery workers execute background jobs.
+
+### Worker Architecture
+
+```mermaid
+flowchart LR
+    A[FastAPI] -->|Dispatch Task| B[(Redis)]
+    B -->|Consume Task| C[Celery Worker]
+    C --> D[Document Processing]
+    D --> E[Embedding Generation]
+    E --> F[(ChromaDB)]
+    C --> G[(PostgreSQL)]
 ```
 
 ## Key Features
@@ -128,8 +156,8 @@ flowchart TD
 - **Retrieval-Augmented Generation (RAG):** Generate answers using retrieved document context.
 - **Document-Level Filtering:** Restrict retrieval to a specific document when requested.
 - **Persistent Vector Storage:** Store embeddings and metadata in ChromaDB.
+- **Asynchronous Task Execution:** Process background jobs using Celery and Redis.
 - **Conversation Management:** Manage conversations and messages through API endpoints.
-- **Background Processing:** Handle document processing and indexing through background tasks.
 - **RESTful API:** Expose document intelligence and RAG functionality through FastAPI.
 - **Interactive Frontend:** Allow users to access the system through a web interface.
 
@@ -139,7 +167,7 @@ flowchart TD
 
 The parsing layer converts uploaded documents into usable text content.
 
-Its purpose is to prepare different document inputs for downstream NLP and retrieval operations.
+Its purpose is to prepare document inputs for downstream NLP and retrieval operations.
 
 The extracted content serves as input for entity extraction, document understanding, chunking, and indexing.
 
@@ -181,6 +209,8 @@ The workflow consists of:
 | Frontend | Web Frontend |
 | Relational Database | PostgreSQL |
 | Vector Database | ChromaDB |
+| Task Queue | Celery |
+| Message Broker | Redis |
 | Database Migrations | Alembic |
 | NLP / Transformer Models | BERT |
 | Named Entity Recognition | GLiNER |
@@ -209,6 +239,7 @@ LexiCore/
 │       │       ├── rag.py
 │       │       └── conversations.py
 │       ├── background/
+│       │   ├── celery_app.py
 │       │   └── tasks.py
 │       ├── configrations/
 │       │   └── config.py
@@ -231,13 +262,14 @@ LexiCore/
 - Python 3.12+
 - uv
 - PostgreSQL
+- Redis
 - Node.js and npm
 - Groq API Key
 
 ### 1. Clone the Repository
 
 ```bash
-https://github.com/ismail-ashraf/Lexi-Core.git
+git clone https://github.com/ismail-ashraf/Lexi-Core.git
 cd LexiCore
 ```
 
@@ -258,17 +290,37 @@ DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5432/lexicore
 GROQ_API_KEY=your_groq_api_key
 ```
 
-Refer to the application configuration for the complete list of supported environment variables.
+Configure the Redis broker URL using the environment variable expected by your Celery configuration.
 
 **Important:** Never commit API keys, database credentials, model weights, or local database backups to version control.
 
-### 4. Run Database Migrations
+### 4. Start Redis
+
+Make sure your Redis server is running before starting the Celery worker.
+
+For a local Redis installation, start the Redis server using the command appropriate for your operating system or Redis installation.
+
+Verify connectivity if needed:
+
+```bash
+redis-cli ping
+```
+
+Expected response:
+
+```text
+PONG
+```
+
+### 5. Run Database Migrations
 
 ```bash
 uv run alembic upgrade head
 ```
 
-### 5. Start the Backend
+### 6. Start the FastAPI Backend
+
+Open a terminal in the project root:
 
 ```bash
 uv run uvicorn lexicore.api.main:app --reload
@@ -280,9 +332,21 @@ The backend API will be available at:
 http://127.0.0.1:8000
 ```
 
-### 6. Start the Frontend
+### 7. Start the Celery Worker
 
-Navigate to the frontend directory:
+Open a **separate terminal** in the project root and run:
+
+```bash
+uv run celery -A lexicore.background.celery_app:celery_app worker --loglevel=info --pool=solo
+```
+
+The worker will connect to Redis and listen for queued tasks.
+
+Keep this terminal running while using background processing features.
+
+### 8. Start the Frontend
+
+Open another terminal:
 
 ```bash
 cd frontend
@@ -296,7 +360,7 @@ npm install
 
 Start the development server using the script configured in `frontend/package.json`.
 
-For example, if the project uses a Vite development script:
+For example, if the project uses Vite:
 
 ```bash
 npm run dev
@@ -304,13 +368,28 @@ npm run dev
 
 The frontend development URL will be displayed in the terminal.
 
-### 7. Explore the API
+### 9. Explore the API
 
 Open the interactive Swagger documentation:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
+
+## Running the Complete Application
+
+For local development, the application components run as separate processes:
+
+| Component | Responsibility |
+|---|---|
+| Redis | Message broker for background tasks |
+| FastAPI | Handles HTTP requests and API operations |
+| Celery Worker | Executes asynchronous document processing tasks |
+| Frontend | Provides the user interface |
+| PostgreSQL | Stores relational application data |
+| ChromaDB | Stores vector embeddings and document chunks |
+
+Make sure Redis, PostgreSQL, FastAPI, and the Celery worker are running before testing workflows that depend on background processing.
 
 ## API Capabilities
 
@@ -360,6 +439,7 @@ LexiCore is built around the following engineering principles:
 - Full-stack architecture with a dedicated frontend and backend.
 - Modular AI components with clearly separated responsibilities.
 - Separation of document parsing, NLP, retrieval, and generation.
+- Asynchronous background execution using Celery and Redis.
 - Persistent storage for document metadata and vector embeddings.
 - Document-level retrieval control.
 - Optimized model inference where applicable.
