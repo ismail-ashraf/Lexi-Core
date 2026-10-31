@@ -237,7 +237,7 @@ LexiCore/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/ismail-ashraf/Lexi-Core.git
+https://github.com/ismail-ashraf/Lexi-Core.git
 cd LexiCore
 ```
 
