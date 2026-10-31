@@ -68,19 +68,19 @@ Explore the application screenshots below:
 
 The chat interface provides a clean starting point for interacting with LexiCore's AI assistant.
 
-[![LexiCore Chat Interface](docs/images/chat-interface.png)](docs/images/chat-interface.png)
+[![LexiCore Chat Interface](/docs/images/chat_interface.png)](/docs/images/chat_interface.png)
 
 ### 2. Document Management
 
 The document management interface allows users to upload and manage their documents and access document-related information.
 
-[![LexiCore Document Management](docs/images/documents.png)](docs/images/documents.png)
+[![LexiCore Document Management](/docs/images/document_managment.png)](/docs/images/document_managment.png)
 
 ### 3. AI Conversation
 
 Users can ask questions about their uploaded documents and receive context-aware answers generated through the RAG pipeline.
 
-[![LexiCore AI Conversation](docs/images/ai-conversation.png)](docs/images/ai-conversation.png)
+[![LexiCore AI Conversation](/docs/images/ai_conversation.png)](/docs/images/ai_conversation.png)
 
 *Click any screenshot to open the full-size image.*
 
