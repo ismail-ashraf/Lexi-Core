@@ -54,17 +54,35 @@ The typical user workflow is:
 
 ## Frontend Preview
 
-<!-- Add actual application screenshots here -->
+LexiCore provides an interactive web interface for managing documents and communicating with the AI-powered document intelligence system.
 
-| Dashboard | Document Management |
-|---|---|
-| ![LexiCore Dashboard](docs/images/dashboard.png) | ![Document Management](docs/images/documents.png) |
+Explore the application screenshots below:
 
-| AI Chat Interface | Conversations |
-|---|---|
-| ![AI Chat](docs/images/chat.png) | ![Conversations](docs/images/conversations.png) |
+**Quick Navigation**
 
-Replace these image paths with actual screenshots from the frontend.
+- [Chat Interface](#1-chat-interface)
+- [Document Management](#2-document-management)
+- [AI Conversation](#3-ai-conversation)
+
+### 1. Chat Interface
+
+The chat interface provides a clean starting point for interacting with LexiCore's AI assistant.
+
+[![LexiCore Chat Interface](docs/images/chat-interface.png)](docs/images/chat-interface.png)
+
+### 2. Document Management
+
+The document management interface allows users to upload and manage their documents and access document-related information.
+
+[![LexiCore Document Management](docs/images/documents.png)](docs/images/documents.png)
+
+### 3. AI Conversation
+
+Users can ask questions about their uploaded documents and receive context-aware answers generated through the RAG pipeline.
+
+[![LexiCore AI Conversation](docs/images/ai-conversation.png)](docs/images/ai-conversation.png)
+
+*Click any screenshot to open the full-size image.*
 
 ## System Architecture
 
@@ -227,6 +245,11 @@ The workflow consists of:
 LexiCore/
 ├── alembic/
 │   └── versions/
+├── docs/
+│   └── images/
+│       ├── chat-interface.png
+│       ├── documents.png
+│       └── ai-conversation.png
 ├── frontend/
 │   ├── package.json
 │   └── ...
@@ -294,31 +317,13 @@ Configure the Redis broker URL using the environment variable expected by your C
 
 **Important:** Never commit API keys, database credentials, model weights, or local database backups to version control.
 
-### 4. Start Redis
-
-Make sure your Redis server is running before starting the Celery worker.
-
-For a local Redis installation, start the Redis server using the command appropriate for your operating system or Redis installation.
-
-Verify connectivity if needed:
-
-```bash
-redis-cli ping
-```
-
-Expected response:
-
-```text
-PONG
-```
-
-### 5. Run Database Migrations
+### 4. Run Database Migrations
 
 ```bash
 uv run alembic upgrade head
 ```
 
-### 6. Start the FastAPI Backend
+### 5. Start the FastAPI Backend
 
 Open a terminal in the project root:
 
@@ -332,7 +337,7 @@ The backend API will be available at:
 http://127.0.0.1:8000
 ```
 
-### 7. Start the Celery Worker
+### 6. Start the Celery Worker
 
 Open a **separate terminal** in the project root and run:
 
@@ -344,7 +349,7 @@ The worker will connect to Redis and listen for queued tasks.
 
 Keep this terminal running while using background processing features.
 
-### 8. Start the Frontend
+### 7. Start the Frontend
 
 Open another terminal:
 
@@ -368,7 +373,7 @@ npm run dev
 
 The frontend development URL will be displayed in the terminal.
 
-### 9. Explore the API
+### 8. Explore the API
 
 Open the interactive Swagger documentation:
 
